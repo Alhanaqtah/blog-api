@@ -1,6 +1,7 @@
 package main
 
 import (
+	"blog-api/internal/http-server/handlers/users"
 	"context"
 	"log/slog"
 	"net/http"
@@ -11,8 +12,11 @@ import (
 	"blog-api/internal/config"
 	"blog-api/internal/lib/logger"
 	"blog-api/internal/lib/logger/sl"
+	userservice "blog-api/internal/service/user"
+	"blog-api/internal/storage/sqlite"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 )
 
 func main() {
@@ -22,8 +26,29 @@ func main() {
 
 	log.Debug("initializing server...", slog.String("addr", cfg.Address))
 
-	// <- mux and middleware
+	// Init storage
+	storage, err := sqlite.New(cfg.StoragePath)
+	if err != nil {
+		log.Error("error opening storage")
+		return
+	}
+
+	// Init service layer
+	usrService := userservice.New(log, storage, cfg.TokenTTL)
+
+	// Handlers and middleware
 	r := chi.NewRouter()
+
+	r.Use(middleware.RequestID)
+	r.Use(middleware.RealIP)
+	r.Use(middleware.Logger)
+	r.Use(middleware.Recoverer)
+
+	// Init handlers
+	usr := users.New(log, usrService, cfg.Secret)
+
+	r.Route("/users", usr.Register())
+	//r.Route("/articles", art.Register())
 
 	srv := http.Server{
 		Handler:      r,
