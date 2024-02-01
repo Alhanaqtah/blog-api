@@ -21,6 +21,7 @@ type Service interface {
 	Register(username string, password string) error
 	Login(username string, password string, secret string) (token string, err error)
 	UserByID(id int64) (models.User, error)
+	Remove(id int64) error
 }
 
 type User struct {
@@ -190,5 +191,44 @@ func (u *User) correctUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (u *User) removeUser(w http.ResponseWriter, r *http.Request) {
+	// TODO: реализовать систему ролей: пользватель, админ
 
+	id, _ := strconv.Atoi(chi.URLParam(r, "id"))
+
+	_, claims, err := jwtauth.FromContext(r.Context())
+	if err != nil {
+		return
+	}
+
+	c := claims["uid"]
+	uid, ok := c.(float64)
+	if !ok {
+		u.log.Debug("error getting uid")
+		return
+	}
+
+	u.log.Debug("", slog.Float64("uid", uid))
+
+	if id != int(uid) {
+		u.log.Debug("user don't have permission")
+		render.JSON(w, r, resp.Response{
+			Status: resp.StatusError,
+			Error:  "there are not enough necessary rights",
+		})
+		return
+	}
+
+	err = u.service.Remove(int64(id))
+	if err != nil {
+		u.log.Debug("can't remove user", sl.Error(err))
+		render.JSON(w, r, resp.Response{
+			Status: resp.StatusError,
+			Error:  "internal error",
+		})
+		return
+	}
+
+	render.JSON(w, r, resp.Response{
+		Status: resp.StatusOk,
+	})
 }

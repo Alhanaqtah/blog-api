@@ -122,3 +122,18 @@ func (s *Storage) UserByID(ctx context.Context, id int64) (models.User, error) {
 
 	return user, nil
 }
+
+func (s *Storage) Remove(ctx context.Context, id int64) error {
+	stmt, err := s.db.PrepareContext(ctx, `DELETE FROM users WHERE id = ?`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	_, err = stmt.ExecContext(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}

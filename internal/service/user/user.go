@@ -23,7 +23,7 @@ var (
 
 type Storage interface {
 	//Correct(context context.Context, user models.User) error
-	//Remove(context context.Context, id int64) error
+	Remove(context context.Context, id int64) error
 	Register(ctx context.Context, username string, passHash []byte) error
 	UserByName(ctx context.Context, username string) (models.User, error)
 	UserByID(ctx context.Context, id int64) (models.User, error)
@@ -123,4 +123,21 @@ func (s *Service) UserByID(id int64) (models.User, error) {
 	}
 
 	return user, nil
+}
+
+func (s *Service) Remove(id int64) error {
+	const op = "service.user.Remove"
+
+	log := s.log.With(slog.String("op", op))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	err := s.storage.Remove(ctx, id)
+	if err != nil {
+		log.Debug("error removing user", sl.Error(err))
+		return err
+	}
+
+	return nil
 }
