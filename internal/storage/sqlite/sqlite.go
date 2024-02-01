@@ -32,7 +32,7 @@ func New(storagePath string) (*Storage, error) {
 			name TEXT UNIQUE NOT NULL,
 			pass_hash BLOB NOT NULL,
 			registration_date DATETIME NOT NULL,
-			status TEXT
+			status TEXT DEFAULT ''
 		);
 		
 		CREATE TABLE IF NOT EXISTS articles (
@@ -83,8 +83,8 @@ func (s *Storage) Register(ctx context.Context, username string, passHash []byte
 	return nil
 }
 
-func (s *Storage) User(ctx context.Context, username string) (models.User, error) {
-	const op = "storage.sqlite.User"
+func (s *Storage) UserByName(ctx context.Context, username string) (models.User, error) {
+	const op = "storage.sqlite.UserByName"
 
 	stmt, err := s.db.PrepareContext(ctx, `SELECT id, name, pass_hash FROM users WHERE name = ?`)
 	if err != nil {
@@ -98,6 +98,26 @@ func (s *Storage) User(ctx context.Context, username string) (models.User, error
 	err = res.Scan(&user.ID, &user.Username, &user.PassHash)
 	if err != nil {
 		return models.User{}, err
+	}
+
+	return user, nil
+}
+
+func (s *Storage) UserByID(ctx context.Context, id int64) (models.User, error) {
+	const op = "storage.sqlite.UserByID"
+
+	stmt, err := s.db.PrepareContext(ctx, `SELECT id, name, registration_date, status FROM users WHERE id = ?`)
+	if err != nil {
+		return models.User{}, fmt.Errorf("%s: %w", op, err)
+	}
+	defer stmt.Close()
+
+	res := stmt.QueryRowContext(ctx, id)
+
+	var user models.User
+	err = res.Scan(&user.ID, &user.Username, &user.RegistrationDate, &user.Status)
+	if err != nil {
+		return models.User{}, fmt.Errorf("%s: %w", op, err)
 	}
 
 	return user, nil

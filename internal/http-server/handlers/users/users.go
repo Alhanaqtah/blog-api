@@ -1,9 +1,11 @@
 package users
 
 import (
+	"blog-api/internal/domain/models"
 	"errors"
 	"log/slog"
 	"net/http"
+	"strconv"
 
 	req "blog-api/internal/lib/api/request"
 	resp "blog-api/internal/lib/api/response"
@@ -18,6 +20,7 @@ import (
 type Service interface {
 	Register(username string, password string) error
 	Login(username string, password string, secret string) (token string, err error)
+	UserByID(id int64) (models.User, error)
 }
 
 type User struct {
@@ -119,9 +122,6 @@ func (u *User) registerUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	u.log.Debug("", slog.String("name", cred.Username))
-	u.log.Debug("", slog.String("pass", cred.Password))
-
 	// Validate user creds
 	if cred.Username == "" {
 		u.log.Debug("username is empty", slog.String("op", op))
@@ -167,7 +167,22 @@ func (u *User) registerUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (u *User) getUser(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.Atoi(chi.URLParam(r, "id"))
 
+	user, err := u.service.UserByID(int64(id))
+	if err != nil {
+		u.log.Debug("can't get user by id", sl.Error(err))
+		render.JSON(w, r, resp.Response{
+			Status: resp.StatusError,
+			Error:  "internal error",
+		})
+		return
+	}
+
+	render.JSON(w, r, resp.Response{
+		Status: resp.StatusOk,
+		User:   &user,
+	})
 }
 
 func (u *User) correctUser(w http.ResponseWriter, r *http.Request) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/mattn/go-sqlite3"
 	"log/slog"
 	"time"
 
@@ -21,11 +22,11 @@ var (
 )
 
 type Storage interface {
-	//Get(context context.Context, id int64) (models.User, error)
 	//Correct(context context.Context, user models.User) error
 	//Remove(context context.Context, id int64) error
-	User(ctx context.Context, username string) (models.User, error)
 	Register(ctx context.Context, username string, passHash []byte) error
+	UserByName(ctx context.Context, username string) (models.User, error)
+	UserByID(ctx context.Context, id int64) (models.User, error)
 }
 
 type Service struct {
@@ -79,7 +80,7 @@ func (u *Service) Login(username string, password string, secret string) (token 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	user, err := u.storage.User(ctx, username)
+	user, err := u.storage.UserByName(ctx, username)
 	if err != nil {
 		if errors.As(err, storage.ErrUserNotFound) {
 			log.Debug("user not found", sl.Error(err))
@@ -101,4 +102,25 @@ func (u *Service) Login(username string, password string, secret string) (token 
 	}
 
 	return token, nil
+}
+
+func (s *Service) UserByID(id int64) (models.User, error) {
+	const op = "service.user.UserByID"
+
+	log := s.log.With(slog.String("op", op))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	user, err := s.storage.UserByID(ctx, id)
+	if err != nil {
+		var sqliteErr sqlite3.Error
+		if errors.As(err, &sqliteErr) && sqliteErr.Code == sqlite3.ErrNotFound {
+			log.Debug("user not found", sl.Error(sqliteErr))
+		}
+		log.Debug("failed get user", sl.Error(err))
+		return models.User{}, err
+	}
+
+	return user, nil
 }
