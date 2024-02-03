@@ -49,13 +49,13 @@ func New(storagePath string) (*Storage, error) {
 		);
 `)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 	defer stmt.Close()
 
 	_, err = stmt.Exec()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 
 	return &Storage{db: db}, nil
@@ -66,7 +66,7 @@ func (s *Storage) Register(ctx context.Context, username string, passHash []byte
 
 	stmt, err := s.db.PrepareContext(ctx, `INSERT INTO users (name, pass_hash, registration_date) VALUES (?, ?, ?)`)
 	if err != nil {
-		return err
+		return fmt.Errorf("%s: %w", op, err)
 	}
 	defer stmt.Close()
 
@@ -98,9 +98,9 @@ func (s *Storage) UserByName(ctx context.Context, username string) (models.User,
 	if err != nil {
 		var sqliteErr sqlite3.Error
 		if errors.As(err, &sqliteErr) && sqliteErr.ExtendedCode == sql.ErrNoRows {
-			return models.User{}, storage.ErrUserNotFound
+			return models.User{}, fmt.Errorf("%s: %w", op, storage.ErrUserNotFound)
 		}
-		return models.User{}, err
+		return models.User{}, fmt.Errorf("%s: %w", op, err)
 	}
 
 	return user, nil
@@ -120,6 +120,10 @@ func (s *Storage) UserByID(ctx context.Context, id int64) (models.User, error) {
 	var user models.User
 	err = res.Scan(&user.ID, &user.Username, &user.RegistrationDate, &user.Status)
 	if err != nil {
+		var sqliteErr sqlite3.Error
+		if errors.As(err, sqliteErr) && sqliteErr.ExtendedCode == sql.ErrNoRows {
+			return models.User{}, fmt.Errorf("%s: %w", op, storage.ErrUserNotFound)
+		}
 		return models.User{}, fmt.Errorf("%s: %w", op, err)
 	}
 
@@ -127,24 +131,32 @@ func (s *Storage) UserByID(ctx context.Context, id int64) (models.User, error) {
 }
 
 func (s *Storage) Remove(ctx context.Context, id int64) error {
+	const op = "storage.sqlite.Remove"
+
 	stmt, err := s.db.PrepareContext(ctx, `DELETE FROM users WHERE id = ?`)
 	if err != nil {
-		return err
+		return fmt.Errorf("%s: %w", op, err)
 	}
 	defer stmt.Close()
 
 	_, err = stmt.ExecContext(ctx, id)
 	if err != nil {
-		return err
+		var sqliteErr sqlite3.Error
+		if errors.As(err, sqliteErr) && sqliteErr.ExtendedCode == sql.ErrNoRows {
+			return fmt.Errorf("%s: %w", op, storage.ErrUserNotFound)
+		}
+		return fmt.Errorf("%s: %w", op, err)
 	}
 
 	return nil
 }
 
 func (s *Storage) UpdateUserName(ctx context.Context, id int64, username string) error {
+	const op = "storage.service.UpdateUserName"
+
 	stmt, err := s.db.PrepareContext(ctx, `UPDATE users SET name = ? WHERE id = ?`)
 	if err != nil {
-		return err
+		return fmt.Errorf("%s: %w", op, err)
 	}
 	defer stmt.Close()
 
@@ -152,15 +164,17 @@ func (s *Storage) UpdateUserName(ctx context.Context, id int64, username string)
 	if err != nil {
 		var sqliteErr sqlite3.Error
 		if errors.As(err, &sqliteErr) && sqliteErr.ExtendedCode == sql.ErrNoRows {
-			return storage.ErrUserNotFound
+			return fmt.Errorf("%s: %w", op, storage.ErrUserNotFound)
 		}
-		return err
+		return fmt.Errorf("%s: %w", op, err)
 	}
 
 	return nil
 }
 
 func (s *Storage) UpdateStatus(ctx context.Context, id int64, status string) error {
+	const op = "storage.sqlite.UpdateStatus"
+
 	stmt, err := s.db.PrepareContext(ctx, `UPDATE users SET status = ? WHERE id = ?`)
 	if err != nil {
 		return err
@@ -171,9 +185,9 @@ func (s *Storage) UpdateStatus(ctx context.Context, id int64, status string) err
 	if err != nil {
 		var sqliteErr sqlite3.Error
 		if errors.As(err, &sqliteErr) && sqliteErr.ExtendedCode == sql.ErrNoRows {
-			return storage.ErrUserNotFound
+			return fmt.Errorf("%s: %w", op, storage.ErrUserNotFound)
 		}
-		return err
+		return fmt.Errorf("%s: %w", op, err)
 	}
 
 	return nil
