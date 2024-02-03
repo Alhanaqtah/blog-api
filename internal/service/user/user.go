@@ -22,11 +22,12 @@ var (
 )
 
 type Storage interface {
-	//Correct(context context.Context, user models.User) error
-	Remove(context context.Context, id int64) error
-	Register(ctx context.Context, username string, passHash []byte) error
-	UserByName(ctx context.Context, username string) (models.User, error)
+	Remove(ctx context.Context, id int64) error
+	UpdateUserName(ctx context.Context, id int64, username string) error
+	UpdateStatus(ctx context.Context, id int64, status string) error
 	UserByID(ctx context.Context, id int64) (models.User, error)
+	UserByName(ctx context.Context, username string) (models.User, error)
+	Register(ctx context.Context, username string, passHash []byte) error
 }
 
 type Service struct {
@@ -43,10 +44,10 @@ func New(log *slog.Logger, storage Storage, ttl time.Duration) *Service {
 	}
 }
 
-func (u *Service) Register(username string, password string) error {
+func (s *Service) Register(username, password string) error {
 	const op = "service.user.Register"
 
-	log := u.log.With(slog.String("op", op))
+	log := s.log.With(slog.String("op", op))
 
 	// Hashing password
 	passHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
@@ -59,7 +60,7 @@ func (u *Service) Register(username string, password string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	err = u.storage.Register(ctx, username, passHash)
+	err = s.storage.Register(ctx, username, passHash)
 	if err != nil {
 		if errors.Is(err, storage.ErrUserExists) {
 			log.Debug("user already exists", sl.Error(err))
@@ -72,17 +73,17 @@ func (u *Service) Register(username string, password string) error {
 	return nil
 }
 
-func (u *Service) Login(username string, password string, secret string) (token string, err error) {
+func (s *Service) Login(username, password, secret string) (token string, err error) {
 	const op = "service.user.Login"
 
-	log := u.log.With(slog.String("op", op))
+	log := s.log.With(slog.String("op", op))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	user, err := u.storage.UserByName(ctx, username)
+	user, err := s.storage.UserByName(ctx, username)
 	if err != nil {
-		if errors.As(err, storage.ErrUserNotFound) {
+		if errors.As(err, &storage.ErrUserNotFound) {
 			log.Debug("user not found", sl.Error(err))
 			return "", fmt.Errorf("%s: %w", op, storage.ErrUserNotFound)
 		}
@@ -95,7 +96,7 @@ func (u *Service) Login(username string, password string, secret string) (token 
 		return "", fmt.Errorf("%s: incorrect password: %w", op, err)
 	}
 
-	token, err = jwt.NewToken(user, u.tokenTTL, secret)
+	token, err = jwt.NewToken(user, s.tokenTTL, secret)
 	if err != nil {
 		log.Debug("failed to create token", sl.Error(err))
 		return "", fmt.Errorf("%s: %w", op, err)
@@ -136,6 +137,40 @@ func (s *Service) Remove(id int64) error {
 	err := s.storage.Remove(ctx, id)
 	if err != nil {
 		log.Debug("error removing user", sl.Error(err))
+		return err
+	}
+
+	return nil
+}
+
+func (s *Service) UpdateUserName(id int64, username string) error {
+	const op = "service.user.UpdateUserName"
+
+	log := s.log.With(slog.String("op", op))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	err := s.storage.UpdateUserName(ctx, id, username)
+	if err != nil {
+		log.Debug("failed to update username", sl.Error(err))
+		return err
+	}
+
+	return nil
+}
+
+func (s *Service) UpdateStatus(id int64, username string) error {
+	const op = "service.user.UpdateStatus"
+
+	log := s.log.With(slog.String("op", op))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	err := s.storage.UpdateStatus(ctx, id, username)
+	if err != nil {
+		log.Debug("failed to update status", sl.Error(err))
 		return err
 	}
 

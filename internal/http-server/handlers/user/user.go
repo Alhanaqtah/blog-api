@@ -1,4 +1,4 @@
-package users
+package user
 
 import (
 	"blog-api/internal/domain/models"
@@ -18,10 +18,12 @@ import (
 )
 
 type Service interface {
-	Register(username string, password string) error
-	Login(username string, password string, secret string) (token string, err error)
-	UserByID(id int64) (models.User, error)
 	Remove(id int64) error
+	UserByID(id int64) (models.User, error)
+	Register(username, password string) error
+	Login(username, password, secret string) (token string, err error)
+	UpdateUserName(id int64, userName string) error
+	UpdateStatus(id int64, status string) error
 }
 
 type User struct {
@@ -41,9 +43,9 @@ func New(log *slog.Logger, service Service, secret string) *User {
 func (u *User) Register() func(r chi.Router) {
 	return func(r chi.Router) {
 		// Public routes
-		r.Get("/{id}", u.getUser)
-		r.Post("/login", u.loginUser)
-		r.Post("/register", u.registerUser)
+		r.Get("/{id}", u.get)
+		r.Post("/login", u.login)
+		r.Post("/register", u.register)
 
 		// Require auth
 		r.Group(func(r chi.Router) {
@@ -51,14 +53,14 @@ func (u *User) Register() func(r chi.Router) {
 			r.Use(jwtauth.Verifier(tokenAuth))
 			r.Use(jwtauth.Authenticator(tokenAuth))
 
-			r.Put("/{id}", u.correctUser)
-			r.Delete("/{id}", u.removeUser)
+			r.Put("/{id}", u.update)
+			r.Delete("/{id}", u.remove)
 		})
 	}
 }
 
-func (u *User) loginUser(w http.ResponseWriter, r *http.Request) {
-	const op = "handlers.users.loginUser"
+func (u *User) login(w http.ResponseWriter, r *http.Request) {
+	const op = "handlers.user.login"
 
 	var cred req.Credentials
 	err := render.DecodeJSON(r.Body, &cred)
@@ -70,9 +72,6 @@ func (u *User) loginUser(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-
-	u.log.Debug("", slog.String("name", cred.Username))
-	u.log.Debug("", slog.String("pass", cred.Password))
 
 	// Validate user creds
 	if cred.Username == "" {
@@ -109,8 +108,8 @@ func (u *User) loginUser(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (u *User) registerUser(w http.ResponseWriter, r *http.Request) {
-	const op = "handlers.articles.registerUser"
+func (u *User) register(w http.ResponseWriter, r *http.Request) {
+	const op = "handlers.user.register"
 
 	var cred req.Credentials
 	err := render.DecodeJSON(r.Body, &cred)
@@ -167,7 +166,7 @@ func (u *User) registerUser(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (u *User) getUser(w http.ResponseWriter, r *http.Request) {
+func (u *User) get(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.Atoi(chi.URLParam(r, "id"))
 
 	user, err := u.service.UserByID(int64(id))
@@ -186,14 +185,74 @@ func (u *User) getUser(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (u *User) correctUser(w http.ResponseWriter, r *http.Request) {
+func (u *User) update(w http.ResponseWriter, r *http.Request) {
+	_, claims, err := jwtauth.FromContext(r.Context())
+	if err != nil {
+		return
+	}
 
-}
-
-func (u *User) removeUser(w http.ResponseWriter, r *http.Request) {
-	// TODO: реализовать систему ролей: пользватель, админ
+	c := claims["uid"]
+	uid, ok := c.(float64)
+	if !ok {
+		u.log.Debug("error getting uid")
+		return
+	}
 
 	id, _ := strconv.Atoi(chi.URLParam(r, "id"))
+
+	if id != int(uid) {
+		u.log.Debug("user don't have permission")
+		render.JSON(w, r, resp.Response{
+			Status: resp.StatusError,
+			Error:  "there are not enough necessary rights",
+		})
+		return
+	}
+
+	var status req.Status
+	err = render.DecodeJSON(r.Body, &status)
+	if err != nil {
+		render.JSON(w, r, resp.Response{
+			Status: resp.StatusError,
+			Error:  "internal error",
+		})
+		return
+	}
+
+	// Validation
+	if status.UserName != "" {
+		err := u.service.UpdateUserName(int64(id), status.UserName)
+		if err != nil {
+			u.log.Debug("error updating username", sl.Error(err))
+			render.JSON(w, r, resp.Response{
+				Status: resp.StatusError,
+				Error:  "internal error",
+			})
+			return
+		}
+	}
+
+	if status.Status != "" {
+		err := u.service.UpdateStatus(int64(id), status.Status)
+		if err != nil {
+			u.log.Debug("error updating status", sl.Error(err))
+			render.JSON(w, r, resp.Response{
+				Status: resp.StatusError,
+				Error:  "internal error",
+			})
+			return
+		}
+	}
+
+	// Response
+	render.JSON(w, r, resp.Response{
+		Status: resp.StatusOk,
+	})
+}
+
+func (u *User) remove(w http.ResponseWriter, r *http.Request) {
+	// TODO: реализовать систему ролей: пользватель, админ
+	// TODO: делать токен недействитеьным после удаления
 
 	_, claims, err := jwtauth.FromContext(r.Context())
 	if err != nil {
@@ -207,7 +266,7 @@ func (u *User) removeUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	u.log.Debug("", slog.Float64("uid", uid))
+	id, _ := strconv.Atoi(chi.URLParam(r, "id"))
 
 	if id != int(uid) {
 		u.log.Debug("user don't have permission")

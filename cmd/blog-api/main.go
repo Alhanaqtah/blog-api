@@ -1,8 +1,9 @@
 package main
 
 import (
-	"blog-api/internal/http-server/handlers/users"
+	"blog-api/internal/http-server/handlers/user"
 	"context"
+	"github.com/go-chi/chi/v5"
 	"log/slog"
 	"net/http"
 	"os"
@@ -15,7 +16,7 @@ import (
 	userservice "blog-api/internal/service/user"
 	"blog-api/internal/storage/sqlite"
 
-	"github.com/go-chi/chi/v5"
+	_ "github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )
 
@@ -45,10 +46,10 @@ func main() {
 	r.Use(middleware.Recoverer)
 
 	// Init handlers
-	usr := users.New(log, usrService, cfg.Secret)
+	usr := user.New(log, usrService, cfg.Secret)
 
 	r.Route("/users", usr.Register())
-	//r.Route("/articles", art.Register())
+	//r.Route("/article", art.Register())
 
 	srv := http.Server{
 		Handler:      r,

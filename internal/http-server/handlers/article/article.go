@@ -1,4 +1,4 @@
-package articles
+package article
 
 import (
 	"github.com/go-chi/jwtauth/v5"

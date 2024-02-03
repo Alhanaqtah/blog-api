@@ -1,17 +1,16 @@
 package sqlite
 
 import (
-	"blog-api/internal/domain/models"
 	"context"
 	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/mattn/go-sqlite3"
 	"time"
 
+	"blog-api/internal/domain/models"
 	"blog-api/internal/storage"
 
-	_ "github.com/mattn/go-sqlite3"
+	"github.com/mattn/go-sqlite3"
 )
 
 type Storage struct {
@@ -43,7 +42,7 @@ func New(storagePath string) (*Storage, error) {
 			author_id INTEGER REFERENCES users(id)
 		);
 
-		CREATE TABLE IF NOT EXISTS user_articles (
+		CREATE TABLE IF NOT EXISTS users_articles (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			user_id INTEGER REFERENCES users(id),
 			article_id INTEGER REFERENCES articles(id)
@@ -97,6 +96,10 @@ func (s *Storage) UserByName(ctx context.Context, username string) (models.User,
 	var user models.User
 	err = res.Scan(&user.ID, &user.Username, &user.PassHash)
 	if err != nil {
+		var sqliteErr sqlite3.Error
+		if errors.As(err, &sqliteErr) && sqliteErr.ExtendedCode == sql.ErrNoRows {
+			return models.User{}, storage.ErrUserNotFound
+		}
 		return models.User{}, err
 	}
 
@@ -132,6 +135,44 @@ func (s *Storage) Remove(ctx context.Context, id int64) error {
 
 	_, err = stmt.ExecContext(ctx, id)
 	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *Storage) UpdateUserName(ctx context.Context, id int64, username string) error {
+	stmt, err := s.db.PrepareContext(ctx, `UPDATE users SET name = ? WHERE id = ?`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	_, err = stmt.ExecContext(ctx, username, id)
+	if err != nil {
+		var sqliteErr sqlite3.Error
+		if errors.As(err, &sqliteErr) && sqliteErr.ExtendedCode == sql.ErrNoRows {
+			return storage.ErrUserNotFound
+		}
+		return err
+	}
+
+	return nil
+}
+
+func (s *Storage) UpdateStatus(ctx context.Context, id int64, status string) error {
+	stmt, err := s.db.PrepareContext(ctx, `UPDATE users SET status = ? WHERE id = ?`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	_, err = stmt.ExecContext(ctx, status, id)
+	if err != nil {
+		var sqliteErr sqlite3.Error
+		if errors.As(err, &sqliteErr) && sqliteErr.ExtendedCode == sql.ErrNoRows {
+			return storage.ErrUserNotFound
+		}
 		return err
 	}
 
