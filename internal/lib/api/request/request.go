@@ -1,11 +1,11 @@
 package request
 
 type Credentials struct {
-	Username string `json:"username,omitempty"`
+	UserName string `json:"user_name,omitempty"`
 	Password string `json:"password,omitempty"`
 }
 
-type Status struct {
+type Update struct {
 	UserName string `json:"user_name,omitempty"`
 	Status   string `json:"status,omitempty"`
 }

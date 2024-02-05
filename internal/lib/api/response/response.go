@@ -15,3 +15,10 @@ type Response struct {
 	Token  string       `json:"token,omitempty"`
 	User   *models.User `json:"user,omitempty"`
 }
+
+func Err(errMsg string) Response {
+	return Response{
+		Status: StatusError,
+		Error:  errMsg,
+	}
+}

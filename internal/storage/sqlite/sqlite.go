@@ -106,7 +106,7 @@ func (s *Storage) UserByName(ctx context.Context, username string) (models.User,
 	return user, nil
 }
 
-func (s *Storage) UserByID(ctx context.Context, id int64) (models.User, error) {
+func (s *Storage) UserByID(ctx context.Context, id int) (models.User, error) {
 	const op = "storage.sqlite.UserByID"
 
 	stmt, err := s.db.PrepareContext(ctx, `SELECT id, name, registration_date, status FROM users WHERE id = ?`)
@@ -130,7 +130,7 @@ func (s *Storage) UserByID(ctx context.Context, id int64) (models.User, error) {
 	return user, nil
 }
 
-func (s *Storage) Remove(ctx context.Context, id int64) error {
+func (s *Storage) Remove(ctx context.Context, id int) error {
 	const op = "storage.sqlite.Remove"
 
 	stmt, err := s.db.PrepareContext(ctx, `DELETE FROM users WHERE id = ?`)
@@ -151,7 +151,7 @@ func (s *Storage) Remove(ctx context.Context, id int64) error {
 	return nil
 }
 
-func (s *Storage) UpdateUserName(ctx context.Context, id int64, username string) error {
+func (s *Storage) UpdateUserName(ctx context.Context, id int, username string) error {
 	const op = "storage.service.UpdateUserName"
 
 	stmt, err := s.db.PrepareContext(ctx, `UPDATE users SET name = ? WHERE id = ?`)
@@ -172,7 +172,7 @@ func (s *Storage) UpdateUserName(ctx context.Context, id int64, username string)
 	return nil
 }
 
-func (s *Storage) UpdateStatus(ctx context.Context, id int64, status string) error {
+func (s *Storage) UpdateStatus(ctx context.Context, id int, status string) error {
 	const op = "storage.sqlite.UpdateStatus"
 
 	stmt, err := s.db.PrepareContext(ctx, `UPDATE users SET status = ? WHERE id = ?`)

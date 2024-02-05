@@ -2,6 +2,7 @@ package user
 
 import (
 	"blog-api/internal/domain/models"
+	"blog-api/internal/lib/jwt"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -18,12 +19,12 @@ import (
 )
 
 type Service interface {
-	Remove(id int64) error
-	UserByID(id int64) (models.User, error)
-	Register(username, password string) error
-	Login(username, password, secret string) (token string, err error)
-	UpdateUserName(id int64, userName string) error
-	UpdateStatus(id int64, status string) error
+	Remove(id int) error
+	UserByID(id int) (models.User, error)
+	Register(userName, password string) error
+	Login(userName, password, secret string) (token string, err error)
+	UpdateUserName(id int, userName string) error
+	UpdateStatus(id int, status string) error
 }
 
 type User struct {
@@ -62,46 +63,38 @@ func (u *User) Register() func(r chi.Router) {
 func (u *User) login(w http.ResponseWriter, r *http.Request) {
 	const op = "handlers.user.login"
 
+	log := u.log.With(slog.String("op", op))
+
 	var cred req.Credentials
 	err := render.DecodeJSON(r.Body, &cred)
 	if err != nil {
-		u.log.Error("%s: %w", op, err)
-		render.JSON(w, r, resp.Response{
-			Status: resp.StatusError,
-			Error:  "internal error",
-		})
+		log.Error("failed to decode request", sl.Error(err))
+		render.JSON(w, r, resp.Err("internal error"))
 		return
 	}
 
 	// Validate user creds
-	if cred.Username == "" {
-		u.log.Debug("username is empty", slog.String("op", op))
-		render.JSON(w, r, resp.Response{
-			Status: resp.StatusError,
-			Error:  "invalid credentials: username is empty",
-		})
+	if cred.UserName == "" {
+		u.log.Error("user name is empty")
+		render.JSON(w, r, resp.Err("invalid credentials: user name is empty"))
 		return
 	}
 
 	if cred.Password == "" {
-		u.log.Debug("password is empty", slog.String("op", op))
-		render.JSON(w, r, resp.Response{
-			Status: resp.StatusError,
-			Error:  "invalid credentials: password is empty",
-		})
+		u.log.Error("password is empty")
+		render.JSON(w, r, resp.Err("invalid credentials: password is empty"))
 		return
 	}
 
-	token, err := u.service.Login(cred.Username, cred.Password, u.secret)
+	// Send to service layer
+	token, err := u.service.Login(cred.UserName, cred.Password, u.secret)
 	if err != nil {
-		u.log.Debug("can't create token", sl.Error(err))
-		render.JSON(w, r, resp.Response{
-			Status: resp.StatusError,
-			Error:  "internal error",
-		})
+		u.log.Error("failed to create new token", sl.Error(err))
+		render.JSON(w, r, resp.Err("internal error"))
 		return
 	}
 
+	// Write response
 	render.JSON(w, r, resp.Response{
 		Status: resp.StatusOk,
 		Token:  token,
@@ -111,74 +104,68 @@ func (u *User) login(w http.ResponseWriter, r *http.Request) {
 func (u *User) register(w http.ResponseWriter, r *http.Request) {
 	const op = "handlers.user.register"
 
+	log := u.log.With(slog.String("op", op))
+
 	var cred req.Credentials
 	err := render.DecodeJSON(r.Body, &cred)
 	if err != nil {
-		u.log.Error("%s: %w", op, err)
-		render.JSON(w, r, resp.Response{
-			Status: resp.StatusError,
-			Error:  "internal error",
-		})
+		log.Error("failed to decode request", sl.Error(err))
+		render.JSON(w, r, resp.Err("internal error"))
 		return
 	}
 
 	// Validate user creds
-	if cred.Username == "" {
-		u.log.Debug("username is empty", slog.String("op", op))
-		render.JSON(w, r, resp.Response{
-			Status: resp.StatusError,
-			Error:  "invalid credentials: username is empty",
-		})
+	if cred.UserName == "" {
+		u.log.Error("user name is empty")
+		render.JSON(w, r, resp.Err("invalid credentials: user name is empty"))
 		return
 	}
 
 	if cred.Password == "" {
-		u.log.Debug("password is empty", slog.String("op", op))
-		render.JSON(w, r, resp.Response{
-			Status: resp.StatusError,
-			Error:  "invalid credentials: password is empty",
-		})
+		u.log.Error("password is empty")
+		render.JSON(w, r, resp.Err("password is empty"))
 		return
 	}
 
 	// Send to service layer
-	err = u.service.Register(cred.Username, cred.Password)
+	err = u.service.Register(cred.UserName, cred.Password)
 	if err != nil {
 		if errors.Is(err, user.ErrUserExists) {
-			u.log.Debug("user already exists", slog.String("op", op))
-			render.JSON(w, r, resp.Response{
-				Status: resp.StatusError,
-				Error:  "user already exists",
-			})
+			u.log.Error("failed to register user", sl.Error(err))
+			render.JSON(w, r, resp.Err("user already exists"))
 			return
 		}
 
-		u.log.Info("error registering new user", slog.String("op", op))
-		render.JSON(w, r, resp.Response{
-			Status: resp.StatusError,
-			Error:  "internal error",
-		})
+		u.log.Info("failed to register new user", sl.Error(err))
+		render.JSON(w, r, resp.Err("internal error"))
 		return
 	}
 
+	// Write response
 	render.JSON(w, r, resp.Response{
 		Status: resp.StatusOk,
 	})
 }
 
 func (u *User) get(w http.ResponseWriter, r *http.Request) {
-	id, _ := strconv.Atoi(chi.URLParam(r, "id"))
+	const op = "handlers.user.get"
 
-	user, err := u.service.UserByID(int64(id))
+	log := u.log.With(slog.String("op", op))
+
+	id, err := strconv.Atoi(chi.URLParam(r, "id"))
 	if err != nil {
-		u.log.Debug("can't get user by id", sl.Error(err))
-		render.JSON(w, r, resp.Response{
-			Status: resp.StatusError,
-			Error:  "internal error",
-		})
+		log.Error("failed to get \"id\" url param", sl.Error(err))
+	}
+
+	// Send to service layer
+	user, err := u.service.UserByID(id)
+	if err != nil {
+		u.log.Error("failed to get user by id", sl.Error(err))
+		render.JSON(w, r, resp.Err("internal error"))
 		return
 	}
 
+	// Write to response
 	render.JSON(w, r, resp.Response{
 		Status: resp.StatusOk,
 		User:   &user,
@@ -186,65 +173,82 @@ func (u *User) get(w http.ResponseWriter, r *http.Request) {
 }
 
 func (u *User) update(w http.ResponseWriter, r *http.Request) {
-	_, claims, err := jwtauth.FromContext(r.Context())
+	const op = "handlers.user.update"
+
+	log := u.log.With(slog.String("op", op))
+
+	// Getting id from url params
+	id := chi.URLParam(r, "id")
+
+	// Checking user permission
+	satisfied, err := jwt.CheckClaim(r.Context(), "uid", id)
+	if !satisfied {
+		log.Error("user doesn't have permission", slog.String("user_id", id))
+		render.JSON(w, r, resp.Err("not enough rights"))
+		return
+	}
 	if err != nil {
+		log.Error("failed to check permission", slog.String("user_id", id))
+		render.JSON(w, r, resp.Err("internal error"))
 		return
 	}
 
-	c := claims["uid"]
-	uid, ok := c.(float64)
-	if !ok {
-		u.log.Debug("error getting uid")
-		return
-	}
+	//// Checking user permission
+	//_, claims, err := jwtauth.FromContext(r.Context())
+	//if err != nil {
+	//	log.Error("failed to get token claims", sl.Error(err))
+	//	render.JSON(w, r, resp.Err("internal error"))
+	//}
+	//
+	////// Getting uid from token claims
+	//c := claims["uid"]
+	//uid, ok := c.(float64)
+	//if !ok {
+	//	log.Error("failed to get uid from claims", sl.Error(err))
+	//	render.JSON(w, r, resp.Err("internal error"))
+	//}
 
-	id, _ := strconv.Atoi(chi.URLParam(r, "id"))
+	////// checking if user have permission
+	//if id != int(uid) {
+	//	log.Debug("user doesn't have permission", slog.Int("user_id", id))
+	//	render.JSON(w, r, resp.Err("not enough rights"))
+	//	return
+	//}
 
-	if id != int(uid) {
-		u.log.Debug("user don't have permission")
-		render.JSON(w, r, resp.Response{
-			Status: resp.StatusError,
-			Error:  "there are not enough necessary rights",
-		})
-		return
-	}
-
-	var status req.Status
-	err = render.DecodeJSON(r.Body, &status)
+	var upd req.Update
+	err = render.DecodeJSON(r.Body, &upd)
 	if err != nil {
-		render.JSON(w, r, resp.Response{
-			Status: resp.StatusError,
-			Error:  "internal error",
-		})
+		render.JSON(w, r, resp.Err("internal error"))
+		return
+	}
+
+	userID, err := strconv.Atoi(id)
+	if err != nil {
+		log.Error("failed to convert str to int", sl.Error(err))
+		render.JSON(w, r, resp.Err("internal error"))
 		return
 	}
 
 	// Validation
-	if status.UserName != "" {
-		err := u.service.UpdateUserName(int64(id), status.UserName)
+	if upd.UserName != "" {
+		// Send to service layer
+
+		err := u.service.UpdateUserName(userID, upd.UserName)
 		if err != nil {
-			u.log.Debug("error updating username", sl.Error(err))
-			render.JSON(w, r, resp.Response{
-				Status: resp.StatusError,
-				Error:  "internal error",
-			})
+			u.log.Error("failed to update user name", sl.Error(err))
+			render.JSON(w, r, resp.Err("internal error"))
 			return
 		}
 	}
 
-	if status.Status != "" {
-		err := u.service.UpdateStatus(int64(id), status.Status)
-		if err != nil {
-			u.log.Debug("error updating status", sl.Error(err))
-			render.JSON(w, r, resp.Response{
-				Status: resp.StatusError,
-				Error:  "internal error",
-			})
-			return
-		}
+	err = u.service.UpdateStatus(userID, upd.Status)
+	if err != nil {
+		u.log.Error("failed to update user status", sl.Error(err))
+		render.JSON(w, r, resp.Err("internal error"))
+		return
 	}
 
-	// Response
+	// Write to response
 	render.JSON(w, r, resp.Response{
 		Status: resp.StatusOk,
 	})
@@ -253,40 +257,48 @@ func (u *User) update(w http.ResponseWriter, r *http.Request) {
 func (u *User) remove(w http.ResponseWriter, r *http.Request) {
 	// TODO: реализовать систему ролей: пользватель, админ
 	// TODO: делать токен недействитеьным после удаления
+	const op = "handlers.user.remove"
 
+	log := u.log.With(slog.String("op", op))
+
+	// Checking user permission
 	_, claims, err := jwtauth.FromContext(r.Context())
 	if err != nil {
-		return
+		log.Error("failed to get token claims", sl.Error(err))
+		render.JSON(w, r, resp.Err("internal error"))
 	}
 
+	//// Getting uid from token claims
 	c := claims["uid"]
 	uid, ok := c.(float64)
 	if !ok {
-		u.log.Debug("error getting uid")
-		return
+		log.Error("failed to get uid from claims", sl.Error(err))
+		render.JSON(w, r, resp.Err("internal error"))
 	}
 
-	id, _ := strconv.Atoi(chi.URLParam(r, "id"))
-
-	if id != int(uid) {
-		u.log.Debug("user don't have permission")
-		render.JSON(w, r, resp.Response{
-			Status: resp.StatusError,
-			Error:  "there are not enough necessary rights",
-		})
-		return
-	}
-
-	err = u.service.Remove(int64(id))
+	//// Getting id from url params
+	id, err := strconv.Atoi(chi.URLParam(r, "id"))
 	if err != nil {
-		u.log.Debug("can't remove user", sl.Error(err))
-		render.JSON(w, r, resp.Response{
-			Status: resp.StatusError,
-			Error:  "internal error",
-		})
+		log.Error("failed to get \"id\" url param", sl.Error(err))
+		render.JSON(w, r, resp.Err("internal error"))
+	}
+
+	//// checking if user have permission
+	if id != int(uid) {
+		log.Debug("user doesn't have permission", slog.Int("user_id", id))
+		render.JSON(w, r, resp.Err("not enough rights"))
 		return
 	}
 
+	// Send to service layer
+	err = u.service.Remove(id)
+	if err != nil {
+		u.log.Error("failed to remove user", sl.Error(err))
+		render.JSON(w, r, resp.Err("internal error"))
+		return
+	}
+
+	// Write to response
 	render.JSON(w, r, resp.Response{
 		Status: resp.StatusOk,
 	})

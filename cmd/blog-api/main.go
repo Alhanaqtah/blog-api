@@ -1,9 +1,7 @@
 package main
 
 import (
-	"blog-api/internal/http-server/handlers/user"
 	"context"
-	"github.com/go-chi/chi/v5"
 	"log/slog"
 	"net/http"
 	"os"
@@ -11,12 +9,13 @@ import (
 	"syscall"
 
 	"blog-api/internal/config"
+	"blog-api/internal/http-server/handlers/user"
 	"blog-api/internal/lib/logger"
 	"blog-api/internal/lib/logger/sl"
 	userservice "blog-api/internal/service/user"
 	"blog-api/internal/storage/sqlite"
 
-	_ "github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )
 

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/mattn/go-sqlite3"
 	"log/slog"
 	"time"
 
@@ -13,21 +12,22 @@ import (
 	"blog-api/internal/lib/logger/sl"
 	"blog-api/internal/storage"
 
+	"github.com/mattn/go-sqlite3"
 	"golang.org/x/crypto/bcrypt"
 )
 
 var (
-	ErrUserExists   = errors.New("username already taken")
+	ErrUserExists   = errors.New("user name already taken")
 	ErrUserNotFound = errors.New("user not found")
 )
 
 type Storage interface {
-	Remove(ctx context.Context, id int64) error
-	UpdateUserName(ctx context.Context, id int64, username string) error
-	UpdateStatus(ctx context.Context, id int64, status string) error
-	UserByID(ctx context.Context, id int64) (models.User, error)
-	UserByName(ctx context.Context, username string) (models.User, error)
-	Register(ctx context.Context, username string, passHash []byte) error
+	Remove(ctx context.Context, id int) error
+	UpdateUserName(ctx context.Context, id int, userName string) error
+	UpdateStatus(ctx context.Context, id int, status string) error
+	UserByID(ctx context.Context, id int) (models.User, error)
+	UserByName(ctx context.Context, userName string) (models.User, error)
+	Register(ctx context.Context, userName string, passHash []byte) error
 }
 
 type Service struct {
@@ -44,7 +44,7 @@ func New(log *slog.Logger, storage Storage, ttl time.Duration) *Service {
 	}
 }
 
-func (s *Service) Register(username, password string) error {
+func (s *Service) Register(userName, password string) error {
 	const op = "service.user.Register"
 
 	log := s.log.With(slog.String("op", op))
@@ -52,28 +52,28 @@ func (s *Service) Register(username, password string) error {
 	// Hashing password
 	passHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
-		log.Debug("error generating hash from password", sl.Error(err))
-
+		log.Error("failed to generate hash from password", sl.Error(err))
 		return fmt.Errorf("%s: %w", op, err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	err = s.storage.Register(ctx, username, passHash)
+	// Send to data layer
+	err = s.storage.Register(ctx, userName, passHash)
 	if err != nil {
 		if errors.Is(err, storage.ErrUserExists) {
-			log.Debug("user already exists", sl.Error(err))
+			log.Error("failed to register user", sl.Error(ErrUserExists))
 			return fmt.Errorf("%s: %w", op, ErrUserExists)
 		}
-		log.Debug("error while registering user", sl.Error(err))
+		log.Error("failed to register user", sl.Error(err))
 		return fmt.Errorf("%s: %w", op, err)
 	}
 
 	return nil
 }
 
-func (s *Service) Login(username, password, secret string) (token string, err error) {
+func (s *Service) Login(userName, password, secret string) (token string, err error) {
 	const op = "service.user.Login"
 
 	log := s.log.With(slog.String("op", op))
@@ -81,31 +81,34 @@ func (s *Service) Login(username, password, secret string) (token string, err er
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	user, err := s.storage.UserByName(ctx, username)
+	// Send to data layer
+	user, err := s.storage.UserByName(ctx, userName)
 	if err != nil {
 		if errors.As(err, &storage.ErrUserNotFound) {
-			log.Debug("user not found", sl.Error(err))
-			return "", fmt.Errorf("%s: %w", op, storage.ErrUserNotFound)
+			log.Error("failed to get user by name", sl.Error(ErrUserNotFound))
+			return "", fmt.Errorf("%s: %w", op, ErrUserNotFound)
 		}
 		return "", fmt.Errorf("%s: %w", op, err)
 	}
 
+	// Checking if password correct
 	err = bcrypt.CompareHashAndPassword(user.PassHash, []byte(password))
 	if err != nil {
-		log.Debug("incorrect password")
+		log.Error("incorrect password", sl.Error(err))
 		return "", fmt.Errorf("%s: incorrect password: %w", op, err)
 	}
 
+	// Generating token
 	token, err = jwt.NewToken(user, s.tokenTTL, secret)
 	if err != nil {
-		log.Debug("failed to create token", sl.Error(err))
-		return "", fmt.Errorf("%s: %w", op, err)
+		log.Error("failed to create new token", sl.Error(err))
+		return "", fmt.Errorf("%s: failed to create new token: %w", op, err)
 	}
 
 	return token, nil
 }
 
-func (s *Service) UserByID(id int64) (models.User, error) {
+func (s *Service) UserByID(id int) (models.User, error) {
 	const op = "service.user.UserByID"
 
 	log := s.log.With(slog.String("op", op))
@@ -113,20 +116,21 @@ func (s *Service) UserByID(id int64) (models.User, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// Send to data layer
 	user, err := s.storage.UserByID(ctx, id)
 	if err != nil {
 		var sqliteErr sqlite3.Error
 		if errors.As(err, &sqliteErr) && sqliteErr.Code == sqlite3.ErrNotFound {
-			log.Debug("user not found", sl.Error(sqliteErr))
+			log.Error("user not found", ErrUserNotFound)
 		}
-		log.Debug("failed get user", sl.Error(err))
+		log.Error("failed get user", sl.Error(err))
 		return models.User{}, err
 	}
 
 	return user, nil
 }
 
-func (s *Service) Remove(id int64) error {
+func (s *Service) Remove(id int) error {
 	const op = "service.user.Remove"
 
 	log := s.log.With(slog.String("op", op))
@@ -134,16 +138,17 @@ func (s *Service) Remove(id int64) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// Send to data layer
 	err := s.storage.Remove(ctx, id)
 	if err != nil {
-		log.Debug("error removing user", sl.Error(err))
+		log.Error("failed to remove user", sl.Error(err))
 		return err
 	}
 
 	return nil
 }
 
-func (s *Service) UpdateUserName(id int64, username string) error {
+func (s *Service) UpdateUserName(id int, userName string) error {
 	const op = "service.user.UpdateUserName"
 
 	log := s.log.With(slog.String("op", op))
@@ -151,16 +156,17 @@ func (s *Service) UpdateUserName(id int64, username string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	err := s.storage.UpdateUserName(ctx, id, username)
+	// Send to data layer
+	err := s.storage.UpdateUserName(ctx, id, userName)
 	if err != nil {
-		log.Debug("failed to update username", sl.Error(err))
-		return err
+		log.Error("failed to update user name", sl.Error(err))
+		return fmt.Errorf("%s: %w", op, err)
 	}
 
 	return nil
 }
 
-func (s *Service) UpdateStatus(id int64, username string) error {
+func (s *Service) UpdateStatus(id int, userName string) error {
 	const op = "service.user.UpdateStatus"
 
 	log := s.log.With(slog.String("op", op))
@@ -168,10 +174,10 @@ func (s *Service) UpdateStatus(id int64, username string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	err := s.storage.UpdateStatus(ctx, id, username)
+	err := s.storage.UpdateStatus(ctx, id, userName)
 	if err != nil {
-		log.Debug("failed to update status", sl.Error(err))
-		return err
+		log.Error("failed to update status", sl.Error(err))
+		return fmt.Errorf("%s: %w", op, err)
 	}
 
 	return nil
