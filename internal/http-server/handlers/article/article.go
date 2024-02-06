@@ -1,6 +1,7 @@
 package article
 
 import (
+	"blog-api/internal/lib/jwt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -17,8 +18,8 @@ import (
 type Service interface {
 	GetAll() (*[]models.Article, error)
 	GetByID(id int) (*models.Article, error)
-	Create(article *models.Article) error
-	Update(title, content string) error
+	Create(art *models.Article) error
+	Update(art *models.Article) error
 	Remove(id int) error
 }
 
@@ -145,8 +146,20 @@ func (a *Article) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	satisfied, err := jwt.CheckClaim(r.Context(), "uid", string(rune(art.UserID)))
+	if !satisfied {
+		log.Error("user doesn't have permission", slog.Int("user_id", art.UserID))
+		render.JSON(w, r, resp.Err("not enough rights"))
+		return
+	}
+	if err != nil {
+		log.Error("failed to check permission", slog.Int("user_id", art.UserID))
+		render.JSON(w, r, resp.Err("internal error"))
+		return
+	}
+
 	// Send to service layer
-	err = a.service.Update(art.Title, art.Content)
+	err = a.service.Update(&art)
 	if err != nil {
 		log.Error("failed to update article", sl.Error(err))
 		render.JSON(w, r, resp.Err("internal error"))
