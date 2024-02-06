@@ -61,7 +61,7 @@ func New(storagePath string) (*Storage, error) {
 	return &Storage{db: db}, nil
 }
 
-func (s *Storage) Register(ctx context.Context, username string, passHash []byte) error {
+func (s *Storage) Register(ctx context.Context, username string, passHash []byte, regestrationDate time.Time) error {
 	const op = "storage.sqlite.Register"
 
 	stmt, err := s.db.PrepareContext(ctx, `INSERT INTO users (name, pass_hash, registration_date) VALUES (?, ?, ?)`)
@@ -70,7 +70,7 @@ func (s *Storage) Register(ctx context.Context, username string, passHash []byte
 	}
 	defer stmt.Close()
 
-	_, err = stmt.ExecContext(ctx, username, passHash, time.Now())
+	_, err = stmt.ExecContext(ctx, username, passHash, regestrationDate)
 	if err != nil {
 		var sqliteErr sqlite3.Error
 		if errors.As(err, &sqliteErr) && sqliteErr.ExtendedCode == sqlite3.ErrConstraintUnique {

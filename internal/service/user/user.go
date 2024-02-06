@@ -27,7 +27,7 @@ type Storage interface {
 	UpdateStatus(ctx context.Context, id int, status string) error
 	UserByID(ctx context.Context, id int) (models.User, error)
 	UserByName(ctx context.Context, userName string) (models.User, error)
-	Register(ctx context.Context, userName string, passHash []byte) error
+	Register(ctx context.Context, userName string, passHash []byte, regestrationDate time.Time) error
 }
 
 type Service struct {
@@ -60,7 +60,7 @@ func (s *Service) Register(userName, password string) error {
 	defer cancel()
 
 	// Send to data layer
-	err = s.storage.Register(ctx, userName, passHash)
+	err = s.storage.Register(ctx, userName, passHash, time.Now())
 	if err != nil {
 		if errors.Is(err, storage.ErrUserExists) {
 			log.Error("failed to register user", sl.Error(ErrUserExists))
