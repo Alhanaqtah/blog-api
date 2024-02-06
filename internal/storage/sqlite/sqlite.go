@@ -121,7 +121,7 @@ func (s *Storage) UserByID(ctx context.Context, id int) (models.User, error) {
 	err = res.Scan(&user.ID, &user.Username, &user.RegistrationDate, &user.Status)
 	if err != nil {
 		var sqliteErr sqlite3.Error
-		if errors.As(err, sqliteErr) && sqliteErr.ExtendedCode == sql.ErrNoRows {
+		if errors.As(err, &sqliteErr) && sqliteErr.ExtendedCode == sql.ErrNoRows {
 			return models.User{}, fmt.Errorf("%s: %w", op, storage.ErrUserNotFound)
 		}
 		return models.User{}, fmt.Errorf("%s: %w", op, err)
@@ -142,7 +142,7 @@ func (s *Storage) Remove(ctx context.Context, id int) error {
 	_, err = stmt.ExecContext(ctx, id)
 	if err != nil {
 		var sqliteErr sqlite3.Error
-		if errors.As(err, sqliteErr) && sqliteErr.ExtendedCode == sql.ErrNoRows {
+		if errors.As(err, &sqliteErr) && sqliteErr.ExtendedCode == sql.ErrNoRows {
 			return fmt.Errorf("%s: %w", op, storage.ErrUserNotFound)
 		}
 		return fmt.Errorf("%s: %w", op, err)

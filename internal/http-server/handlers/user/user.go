@@ -18,6 +18,7 @@ import (
 	"github.com/go-chi/render"
 )
 
+//go:generate go run github.com/vektra/mockery/v2@v2.28.2 --name=Service
 type Service interface {
 	Remove(id int) error
 	UserByID(id int) (models.User, error)
@@ -44,7 +45,8 @@ func New(log *slog.Logger, service Service, secret string) *User {
 func (u *User) Register() func(r chi.Router) {
 	return func(r chi.Router) {
 		// Public routes
-		r.Get("/{id}", u.get)
+		//r.Get("/", u.getAll)
+		r.Get("/{id}", u.getByID)
 		r.Post("/login", u.login)
 		r.Post("/register", u.register)
 
@@ -147,7 +149,7 @@ func (u *User) register(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (u *User) get(w http.ResponseWriter, r *http.Request) {
+func (u *User) getByID(w http.ResponseWriter, r *http.Request) {
 	const op = "handlers.user.get"
 
 	log := u.log.With(slog.String("op", op))
@@ -303,3 +305,7 @@ func (u *User) remove(w http.ResponseWriter, r *http.Request) {
 		Status: resp.StatusOk,
 	})
 }
+
+//func (u *User) getAll(writer http.ResponseWriter, request *http.Request) {
+//
+//}
