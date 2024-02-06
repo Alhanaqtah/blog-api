@@ -45,7 +45,7 @@ func New(log *slog.Logger, service Service, secret string) *User {
 func (u *User) Register() func(r chi.Router) {
 	return func(r chi.Router) {
 		// Public routes
-		//r.Get("/", u.getAll)
+		//r.Get("/", u.getAll) // TODO: получение всех пользователей блога
 		r.Get("/{id}", u.getByID)
 		r.Post("/login", u.login)
 		r.Post("/register", u.register)
@@ -195,28 +195,6 @@ func (u *User) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//// Checking user permission
-	//_, claims, err := jwtauth.FromContext(r.Context())
-	//if err != nil {
-	//	log.Error("failed to get token claims", sl.Error(err))
-	//	render.JSON(w, r, resp.Err("internal error"))
-	//}
-	//
-	////// Getting uid from token claims
-	//c := claims["uid"]
-	//uid, ok := c.(float64)
-	//if !ok {
-	//	log.Error("failed to get uid from claims", sl.Error(err))
-	//	render.JSON(w, r, resp.Err("internal error"))
-	//}
-
-	////// checking if user have permission
-	//if id != int(uid) {
-	//	log.Debug("user doesn't have permission", slog.Int("user_id", id))
-	//	render.JSON(w, r, resp.Err("not enough rights"))
-	//	return
-	//}
-
 	var upd req.Update
 	err = render.DecodeJSON(r.Body, &upd)
 	if err != nil {
@@ -263,32 +241,23 @@ func (u *User) remove(w http.ResponseWriter, r *http.Request) {
 
 	log := u.log.With(slog.String("op", op))
 
-	// Checking user permission
-	_, claims, err := jwtauth.FromContext(r.Context())
-	if err != nil {
-		log.Error("failed to get token claims", sl.Error(err))
-		render.JSON(w, r, resp.Err("internal error"))
-	}
-
-	//// Getting uid from token claims
-	c := claims["uid"]
-	uid, ok := c.(float64)
-	if !ok {
-		log.Error("failed to get uid from claims", sl.Error(err))
-		render.JSON(w, r, resp.Err("internal error"))
-	}
-
-	//// Getting id from url params
+	// Getting id from url params
 	id, err := strconv.Atoi(chi.URLParam(r, "id"))
 	if err != nil {
 		log.Error("failed to get \"id\" url param", sl.Error(err))
 		render.JSON(w, r, resp.Err("internal error"))
 	}
 
-	//// checking if user have permission
-	if id != int(uid) {
-		log.Debug("user doesn't have permission", slog.Int("user_id", id))
+	// Checking user permission
+	satisfied, err := jwt.CheckClaim(r.Context(), "uid", string(rune(id)))
+	if !satisfied {
+		log.Error("user doesn't have permission", slog.Int("user_id", id))
 		render.JSON(w, r, resp.Err("not enough rights"))
+		return
+	}
+	if err != nil {
+		log.Error("failed to check permission", slog.Int("user_id", id))
+		render.JSON(w, r, resp.Err("internal error"))
 		return
 	}
 
