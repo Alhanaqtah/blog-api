@@ -2,6 +2,7 @@ package jwt
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -35,13 +36,16 @@ func CheckClaim(ctx context.Context, claim, expectedClaim string) (bool, error) 
 		return false, fmt.Errorf("%s: %w", op, err)
 	}
 
-	c := claims[claim]
+	c, ok := claims[claim]
+	if !ok {
+		return false, fmt.Errorf("%s: claim not found", op)
+	}
 
 	switch c.(type) {
 	case float64:
 		claim, ok := c.(float64)
 		if !ok {
-			return false, fmt.Errorf("%s: %w", op, err)
+			return false, fmt.Errorf("%s: %w", op, errors.New("type not found"))
 		}
 
 		expClaim, err := strconv.ParseFloat(expectedClaim, 64)
@@ -50,16 +54,16 @@ func CheckClaim(ctx context.Context, claim, expectedClaim string) (bool, error) 
 		}
 
 		if claim != expClaim {
-			return true, fmt.Errorf("%s: %w", op, err)
+			return false, nil
 		}
 	case string:
 		claim, ok := c.(string)
 		if !ok {
-			return false, fmt.Errorf("%s: %w", op, err)
+			return false, fmt.Errorf("%s: %w", op, errors.New("type not found"))
 		}
 
 		if claim != expectedClaim {
-			return false, fmt.Errorf("%s: the claims are not satisfied: %w", err)
+			return false, nil
 		}
 	}
 

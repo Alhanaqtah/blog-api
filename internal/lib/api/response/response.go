@@ -14,7 +14,7 @@ type Response struct {
 	Error    string            `json:"error,omitempty"`
 	Token    string            `json:"token,omitempty"`
 	User     *models.User      `json:"user,omitempty"`
-	Articles *[]models.Article `json:"article,omitempty"`
+	Articles *[]models.Article `json:"articles,omitempty"`
 }
 
 func Err(errMsg string) Response {

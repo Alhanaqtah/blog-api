@@ -9,9 +9,11 @@ import (
 	"syscall"
 
 	"blog-api/internal/config"
+	"blog-api/internal/http-server/handlers/article"
 	"blog-api/internal/http-server/handlers/user"
 	"blog-api/internal/lib/logger"
 	"blog-api/internal/lib/logger/sl"
+	articleservice "blog-api/internal/service/article"
 	userservice "blog-api/internal/service/user"
 	"blog-api/internal/storage/sqlite"
 
@@ -35,6 +37,7 @@ func main() {
 
 	// Init service layer
 	usrService := userservice.New(log, storage, cfg.TokenTTL)
+	artService := articleservice.New(log, storage)
 
 	// Handlers and middleware
 	r := chi.NewRouter()
@@ -46,9 +49,10 @@ func main() {
 
 	// Init handlers
 	usr := user.New(log, usrService, cfg.Secret)
+	art := article.New(log, artService, cfg.Secret)
 
 	r.Route("/users", usr.Register())
-	//r.Route("/article", art.Register())
+	r.Route("/articles", art.Register())
 
 	srv := http.Server{
 		Handler:      r,

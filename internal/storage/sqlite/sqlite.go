@@ -27,7 +27,7 @@ func New(storagePath string) (*Storage, error) {
 
 	stmt, err := db.Prepare(`
 		CREATE TABLE IF NOT EXISTS users (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			id INTEGER PRIMARY KEY,
 			name TEXT UNIQUE NOT NULL,
 			pass_hash BLOB NOT NULL,
 			registration_date DATETIME NOT NULL,
@@ -35,7 +35,7 @@ func New(storagePath string) (*Storage, error) {
 		);
 		
 		CREATE TABLE IF NOT EXISTS articles (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			id INTEGER PRIMARY KEY,
 			title TEXT NOT NULL,
 			content TEXT NOT NULL,
 			publish_date DATETIME NOT NULL,
@@ -43,9 +43,7 @@ func New(storagePath string) (*Storage, error) {
 		);
 
 		CREATE TABLE IF NOT EXISTS users_articles (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			user_id INTEGER REFERENCES users(id),
-			article_id INTEGER REFERENCES articles(id)
+			article_d INTEGER REFERENCES articles(id)
 		);
 `)
 	if err != nil {
@@ -60,6 +58,8 @@ func New(storagePath string) (*Storage, error) {
 
 	return &Storage{db: db}, nil
 }
+
+// ### User ### //
 
 func (s *Storage) Register(ctx context.Context, username string, passHash []byte, regestrationDate time.Time) error {
 	const op = "storage.sqlite.Register"
@@ -130,8 +130,8 @@ func (s *Storage) UserByID(ctx context.Context, id int) (models.User, error) {
 	return user, nil
 }
 
-func (s *Storage) Remove(ctx context.Context, id int) error {
-	const op = "storage.sqlite.Remove"
+func (s *Storage) RemoveUser(ctx context.Context, id int) error {
+	const op = "storage.sqlite.RemoveUser"
 
 	stmt, err := s.db.PrepareContext(ctx, `DELETE FROM users WHERE id = ?`)
 	if err != nil {
@@ -186,6 +186,148 @@ func (s *Storage) UpdateStatus(ctx context.Context, id int, status string) error
 		var sqliteErr sqlite3.Error
 		if errors.As(err, &sqliteErr) && sqliteErr.ExtendedCode == sql.ErrNoRows {
 			return fmt.Errorf("%s: %w", op, storage.ErrUserNotFound)
+		}
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	return nil
+}
+
+// ### Article ### //
+
+func (s *Storage) GetAllArticles(ctx context.Context) ([]models.Article, error) {
+	const op = "storage.sqlite.GetAllArticles"
+
+	stmt, err := s.db.PrepareContext(ctx, `SELECT * FROM articles`)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", op, err)
+	}
+	defer stmt.Close()
+
+	rows, err := stmt.QueryContext(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", op, err)
+	}
+
+	var arts []models.Article
+	for rows.Next() {
+		var art models.Article
+
+		err = rows.Scan(&art.ID, &art.Title, &art.Content, &art.PublishDate, &art.UserID)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", op, err)
+		}
+
+		arts = append(arts, art)
+	}
+
+	return arts, nil
+}
+
+func (s *Storage) GetArticleByID(ctx context.Context, id int) (*models.Article, error) {
+	const op = "storage.sqlite.GetArticleByID"
+
+	stmt, err := s.db.PrepareContext(ctx, `SELECT title, content, publish_date, user_id FROM articles WHERE id = ?`)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", op, err)
+	}
+	defer stmt.Close()
+
+	row := stmt.QueryRowContext(ctx, id)
+	if err != nil {
+		var sqliteErr sqlite3.Error
+		if errors.As(err, &sqliteErr) && sqliteErr.ExtendedCode == sql.ErrNoRows {
+			return nil, fmt.Errorf("%s: %w", op, storage.ErrArticleNotFound)
+		}
+		return nil, fmt.Errorf("%s: %w", op, err)
+	}
+
+	var art models.Article
+	err = row.Scan(&art.Title, &art.Content, &art.PublishDate, &art.UserID)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", op, err)
+	}
+
+	return &art, nil
+}
+
+func (s *Storage) CreateArticle(ctx context.Context, userID int, title, content string, publishDate time.Time) error {
+	const op = "storage.sqlite.CreateArticle"
+
+	stmt, err := s.db.PrepareContext(ctx, `INSERT INTO articles (title, content, publish_date, user_id) VALUES (?, ?, ?, ?)`)
+	if err != nil {
+		return fmt.Errorf("%s: %w", op, err)
+	}
+	defer stmt.Close()
+
+	_, err = stmt.ExecContext(ctx, title, content, publishDate, userID)
+	if err != nil {
+		var sqliteErr sqlite3.Error
+		if errors.As(err, &sqliteErr) && sqliteErr.ExtendedCode == sqlite3.ErrConstraintUnique {
+			return fmt.Errorf("%s: %w", op, storage.ErrArticleExists)
+		}
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	return nil
+}
+
+func (s *Storage) UpdateArticleTitle(ctx context.Context, id int, title string) error {
+	const op = "storage.sqlite.UpdateArticleTitle"
+
+	stmt, err := s.db.PrepareContext(ctx, `UPDATE articles SET title = ? WHERE id = ?`)
+	if err != nil {
+		return fmt.Errorf("%s: %w", op, err)
+	}
+	defer stmt.Close()
+
+	_, err = stmt.ExecContext(ctx, title, id)
+	if err != nil {
+		var sqliteErr sqlite3.Error
+		if errors.As(err, &sqliteErr) && sqliteErr.ExtendedCode == sql.ErrNoRows {
+			return fmt.Errorf("%s: %w", op, storage.ErrArticleNotFound)
+		}
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	return nil
+}
+
+func (s *Storage) UpdateArticleContent(ctx context.Context, id int, content string) error {
+	const op = "storage.sqlite.UpdateArticleContent"
+
+	stmt, err := s.db.PrepareContext(ctx, `UPDATE articles SET content = ? WHERE id = ?`)
+	if err != nil {
+		return fmt.Errorf("%s: %w", op, err)
+	}
+	defer stmt.Close()
+
+	_, err = stmt.ExecContext(ctx, content, id)
+	if err != nil {
+		var sqliteErr sqlite3.Error
+		if errors.As(err, &sqliteErr) && sqliteErr.ExtendedCode == sql.ErrNoRows {
+			return fmt.Errorf("%s: %w", op, storage.ErrArticleNotFound)
+		}
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	return nil
+}
+
+func (s *Storage) RemoveArticle(ctx context.Context, id int) error {
+	const op = "storage.sqlite.RemoveArticle"
+
+	stmt, err := s.db.PrepareContext(ctx, `DELETE FROM articles WHERE id = ?`)
+	if err != nil {
+		return fmt.Errorf("%s: %w", op, err)
+	}
+	defer stmt.Close()
+
+	_, err = stmt.ExecContext(ctx, id)
+	if err != nil {
+		var sqliteErr sqlite3.Error
+		if errors.As(err, &sqliteErr) && sqliteErr.ExtendedCode == sql.ErrNoRows {
+			return fmt.Errorf("%s: %w", op, storage.ErrArticleNotFound)
 		}
 		return fmt.Errorf("%s: %w", op, err)
 	}

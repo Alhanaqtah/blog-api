@@ -20,7 +20,7 @@ import (
 
 //go:generate go run github.com/vektra/mockery/v2@v2.28.2 --name=Service
 type Service interface {
-	Remove(id int) error
+	RemoveUser(id int) error
 	UserByID(id int) (models.User, error)
 	Register(userName, password string) error
 	Login(userName, password, secret string) (token string, err error)
@@ -184,14 +184,14 @@ func (u *User) update(w http.ResponseWriter, r *http.Request) {
 
 	// Checking user permission
 	satisfied, err := jwt.CheckClaim(r.Context(), "uid", id)
-	if !satisfied {
-		log.Error("user doesn't have permission", slog.String("user_id", id))
-		render.JSON(w, r, resp.Err("not enough rights"))
-		return
-	}
 	if err != nil {
 		log.Error("failed to check permission", slog.String("user_id", id))
 		render.JSON(w, r, resp.Err("internal error"))
+		return
+	}
+	if !satisfied {
+		log.Error("user doesn't have permission")
+		render.JSON(w, r, resp.Err("not enough rights"))
 		return
 	}
 
@@ -249,20 +249,20 @@ func (u *User) remove(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Checking user permission
-	satisfied, err := jwt.CheckClaim(r.Context(), "uid", string(rune(id)))
-	if !satisfied {
-		log.Error("user doesn't have permission", slog.Int("user_id", id))
-		render.JSON(w, r, resp.Err("not enough rights"))
-		return
-	}
+	satisfied, err := jwt.CheckClaim(r.Context(), "uid", strconv.Itoa(id))
 	if err != nil {
 		log.Error("failed to check permission", slog.Int("user_id", id))
 		render.JSON(w, r, resp.Err("internal error"))
 		return
 	}
+	if !satisfied {
+		log.Error("user doesn't have permission")
+		render.JSON(w, r, resp.Err("not enough rights"))
+		return
+	}
 
 	// Send to service layer
-	err = u.service.Remove(id)
+	err = u.service.RemoveUser(id)
 	if err != nil {
 		u.log.Error("failed to remove user", sl.Error(err))
 		render.JSON(w, r, resp.Err("internal error"))

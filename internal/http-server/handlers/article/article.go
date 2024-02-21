@@ -1,14 +1,17 @@
 package article
 
 import (
-	"blog-api/internal/lib/jwt"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
 
 	"blog-api/internal/domain/models"
 	resp "blog-api/internal/lib/api/response"
+	"blog-api/internal/lib/jwt"
 	"blog-api/internal/lib/logger/sl"
+	"blog-api/internal/service/article"
+	"blog-api/internal/storage"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/jwtauth/v5"
@@ -16,7 +19,7 @@ import (
 )
 
 type Service interface {
-	GetAll() (*[]models.Article, error)
+	GetAll() ([]models.Article, error)
 	GetByID(id int) (*models.Article, error)
 	Create(art *models.Article) error
 	Update(art *models.Article) error
@@ -72,7 +75,7 @@ func (a *Article) getAll(w http.ResponseWriter, r *http.Request) {
 	// Write to response
 	render.JSON(w, r, resp.Response{
 		Status:   resp.StatusOk,
-		Articles: articles,
+		Articles: &articles,
 	})
 }
 
@@ -89,10 +92,38 @@ func (a *Article) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	satisfied, err := jwt.CheckClaim(r.Context(), "uid", strconv.Itoa(art.UserID))
+	if err != nil {
+		log.Error("failed to check permission", slog.String("user_id", strconv.Itoa(art.UserID)), sl.Error(err))
+		render.JSON(w, r, resp.Err("internal error"))
+		return
+	}
+	if !satisfied {
+		log.Debug("user doesn't have permission", slog.Int("user_id", art.UserID))
+		render.JSON(w, r, resp.Err("not enough rights"))
+		return
+	}
+
+	// Validation
+	if art.Title == "" {
+		log.Debug("failed to create article: title is empty")
+		render.JSON(w, r, resp.Err("title is empty"))
+		return
+	}
+	if art.Content == "" {
+		log.Debug("failed to create article: content is empty")
+		render.JSON(w, r, resp.Err("content is empty"))
+		return
+	}
+
 	// Send to service layer
 	err = a.service.Create(&art)
 	if err != nil {
 		log.Error("failed to create article", sl.Error(err))
+		if errors.Is(err, article.ErrArticleExists) {
+			render.JSON(w, r, resp.Err("article title already taken"))
+			return
+		}
 		render.JSON(w, r, resp.Err("internal error"))
 		return
 	}
@@ -116,15 +147,19 @@ func (a *Article) getByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Send to service layer
-	article, err := a.service.GetByID(id)
+	artcl, err := a.service.GetByID(id)
 	if err != nil {
 		log.Error("failed to get article by id", sl.Error(err))
+		if errors.Is(err, article.ErrArticleNotFound) {
+			render.JSON(w, r, resp.Err("article not found"))
+			return
+		}
 		render.JSON(w, r, resp.Err("internal error"))
 		return
 	}
 
 	var art []models.Article
-	art = append(art, *article)
+	art = append(art, *artcl)
 
 	// Write to response
 	render.JSON(w, r, resp.Response{
@@ -138,23 +173,42 @@ func (a *Article) update(w http.ResponseWriter, r *http.Request) {
 
 	log := a.log.With(slog.String("op", op))
 
+	articleID, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		log.Error("failed to get \"id\" url param", sl.Error(err))
+		render.JSON(w, r, resp.Err("internal error"))
+		return
+	}
+
 	var art models.Article
-	err := render.DecodeJSON(r.Body, &art)
+	err = render.DecodeJSON(r.Body, &art)
 	if err != nil {
 		log.Error("failed to decode request", sl.Error(err))
 		render.JSON(w, r, resp.Err("internal error"))
 		return
 	}
 
-	satisfied, err := jwt.CheckClaim(r.Context(), "uid", string(rune(art.UserID)))
-	if !satisfied {
-		log.Error("user doesn't have permission", slog.Int("user_id", art.UserID))
-		render.JSON(w, r, resp.Err("not enough rights"))
+	// Send to service layer
+	ar, err := a.service.GetByID(articleID)
+	if err != nil {
+		log.Error("failed to get article by id", sl.Error(err))
+		if errors.Is(err, storage.ErrArticleNotFound) {
+			render.JSON(w, r, resp.Err("article not found"))
+			return
+		}
+		render.JSON(w, r, resp.Err("internal error"))
 		return
 	}
+
+	satisfied, err := jwt.CheckClaim(r.Context(), "uid", strconv.Itoa(ar.UserID))
 	if err != nil {
-		log.Error("failed to check permission", slog.Int("user_id", art.UserID))
+		log.Error("failed to check permission")
 		render.JSON(w, r, resp.Err("internal error"))
+		return
+	}
+	if !satisfied {
+		log.Error("user doesn't have permission")
+		render.JSON(w, r, resp.Err("not enough rights"))
 		return
 	}
 
@@ -162,6 +216,10 @@ func (a *Article) update(w http.ResponseWriter, r *http.Request) {
 	err = a.service.Update(&art)
 	if err != nil {
 		log.Error("failed to update article", sl.Error(err))
+		if errors.Is(err, article.ErrArticleNotFound) {
+			render.JSON(w, r, resp.Err("article not found"))
+			return
+		}
 		render.JSON(w, r, resp.Err("internal error"))
 		return
 	}
@@ -185,9 +243,36 @@ func (a *Article) remove(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Send to service layer
+	art, err := a.service.GetByID(id)
+	if err != nil {
+		log.Error("failed to get user by id", sl.Error(err))
+		if errors.Is(err, article.ErrArticleNotFound) {
+			render.JSON(w, r, resp.Err("article not found"))
+		}
+		render.JSON(w, r, resp.Err("internal error"))
+		return
+	}
+
+	satisfied, err := jwt.CheckClaim(r.Context(), "uid", strconv.Itoa(art.UserID))
+	if err != nil {
+		log.Error("failed to check permission")
+		render.JSON(w, r, resp.Err("internal error"))
+		return
+	}
+	if !satisfied {
+		log.Error("user doesn't have permission")
+		render.JSON(w, r, resp.Err("not enough rights"))
+		return
+	}
+
+	// Send to service layer
 	err = a.service.Remove(id)
 	if err != nil {
 		log.Error("failed to remove article", sl.Error(err))
+		if errors.Is(err, article.ErrArticleNotFound) {
+			render.JSON(w, r, resp.Err("article not found"))
+			return
+		}
 		render.JSON(w, r, resp.Err("internal error"))
 		return
 	}

@@ -1,6 +1,7 @@
 package article
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -11,13 +12,18 @@ import (
 	"blog-api/internal/storage"
 )
 
+var (
+	ErrArticleExists   = errors.New("article already exists")
+	ErrArticleNotFound = errors.New("article not found")
+)
+
 type Storage interface {
-	GetAllUsers() (*[]models.Article, error)
-	GetByID(id int) (*models.Article, error)
-	Create(articleID, userID int, title, content string, publishDate time.Time) error
-	UpdateTitle(id int, title string) error
-	UpdateContent(id int, content string) error
-	Remove(id int) error
+	GetAllArticles(ctx context.Context) ([]models.Article, error)
+	GetArticleByID(ctx context.Context, id int) (*models.Article, error)
+	CreateArticle(ctx context.Context, userID int, title, content string, publishDate time.Time) error
+	UpdateArticleTitle(ctx context.Context, id int, title string) error
+	UpdateArticleContent(ctx context.Context, id int, content string) error
+	RemoveArticle(ctx context.Context, id int) error
 }
 
 type Service struct {
@@ -32,13 +38,16 @@ func New(log *slog.Logger, storage Storage) *Service {
 	}
 }
 
-func (s *Service) GetAll() (*[]models.Article, error) {
+func (s *Service) GetAll() ([]models.Article, error) {
 	const op = "service.article.GetAll"
 
 	log := s.log.With(slog.String("op", op))
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	// Send to storage layer
-	arts, err := s.storage.GetAllUsers()
+	arts, err := s.storage.GetAllArticles(ctx)
 	if err != nil {
 		log.Error("failed to get all users", sl.Error(err))
 		return nil, fmt.Errorf("%s: %w", op, err)
@@ -52,12 +61,15 @@ func (s *Service) GetByID(id int) (*models.Article, error) {
 
 	log := s.log.With(slog.String("op", op))
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	// Send to storage layer
-	art, err := s.storage.GetByID(id)
+	art, err := s.storage.GetArticleByID(ctx, id)
 	if err != nil {
-		if errors.As(err, &storage.ErrArticleNotFound) {
+		if errors.Is(err, storage.ErrArticleNotFound) {
 			log.Error("article not found", sl.Error(err))
-			return nil, fmt.Errorf("%s: %w", op, storage.ErrArticleNotFound)
+			return nil, fmt.Errorf("%s: %w", op, ErrArticleNotFound)
 		}
 		log.Error("failed to get article", sl.Error(err))
 		return nil, fmt.Errorf("%s: %w", op, err)
@@ -67,16 +79,19 @@ func (s *Service) GetByID(id int) (*models.Article, error) {
 }
 
 func (s *Service) Create(art *models.Article) error {
-	const op = "service.article.GetByID"
+	const op = "service.article.Create"
 
 	log := s.log.With(slog.String("op", op))
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	// Send to storage layer
-	err := s.storage.Create(art.ID, art.UserID, art.Title, art.Content, time.Now())
+	err := s.storage.CreateArticle(ctx, art.UserID, art.Title, art.Content, time.Now())
 	if err != nil {
-		if errors.As(err, &storage.ErrArticleNotFound) {
-			log.Error("art not found", sl.Error(err))
-			return fmt.Errorf("%s: %w", op, storage.ErrArticleNotFound)
+		if errors.Is(err, storage.ErrArticleExists) {
+			log.Error("article not found", sl.Error(err))
+			return fmt.Errorf("%s: %w", op, ErrArticleExists)
 		}
 		log.Error("failed to get art", sl.Error(err))
 		return fmt.Errorf("%s: %w", op, err)
@@ -90,18 +105,21 @@ func (s *Service) Update(art *models.Article) error {
 
 	log := s.log.With(slog.String("op", op))
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	// Send to storage layer
 	var err error
-	if art.Title == "" {
-		s.storage.UpdateTitle(art.ID, art.Title)
+	if art.Title != "" {
+		err = s.storage.UpdateArticleTitle(ctx, art.ID, art.Title)
 	}
-	if art.Content == "" {
-		s.storage.UpdateContent(art.ID, art.Content)
+	if art.Content != "" {
+		err = s.storage.UpdateArticleContent(ctx, art.ID, art.Content)
 	}
 	if err != nil {
-		if errors.As(err, &storage.ErrArticleNotFound) {
+		if errors.Is(err, storage.ErrArticleNotFound) {
 			log.Error("article not found", sl.Error(err))
-			return fmt.Errorf("%s: %w", op, storage.ErrArticleNotFound)
+			return fmt.Errorf("%s: %w", op, ErrArticleNotFound)
 		}
 		log.Error("failed to update article", sl.Error(err))
 		return fmt.Errorf("%s: %w", op, err)
@@ -111,13 +129,20 @@ func (s *Service) Update(art *models.Article) error {
 }
 
 func (s *Service) Remove(id int) error {
-	const op = "service.article.Remove"
+	const op = "service.article.RemoveUser"
 
 	log := s.log.With(slog.String("op", op))
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	// Send to storage layer
-	err := s.storage.Remove(id)
+	err := s.storage.RemoveArticle(ctx, id)
 	if err != nil {
+		if errors.Is(err, storage.ErrArticleNotFound) {
+			log.Error("failed to remove article", sl.Error(err))
+			return fmt.Errorf("%s: %w", op, ErrArticleNotFound)
+		}
 		log.Error("failed to remove article", sl.Error(err))
 		return fmt.Errorf("%s: %w", op, err)
 	}

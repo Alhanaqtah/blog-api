@@ -22,7 +22,7 @@ var (
 )
 
 type Storage interface {
-	Remove(ctx context.Context, id int) error
+	RemoveUser(ctx context.Context, id int) error
 	UpdateUserName(ctx context.Context, id int, userName string) error
 	UpdateStatus(ctx context.Context, id int, status string) error
 	UserByID(ctx context.Context, id int) (models.User, error)
@@ -130,8 +130,8 @@ func (s *Service) UserByID(id int) (models.User, error) {
 	return user, nil
 }
 
-func (s *Service) Remove(id int) error {
-	const op = "service.user.Remove"
+func (s *Service) RemoveUser(id int) error {
+	const op = "service.user.RemoveUser"
 
 	log := s.log.With(slog.String("op", op))
 
@@ -139,7 +139,7 @@ func (s *Service) Remove(id int) error {
 	defer cancel()
 
 	// Send to data layer
-	err := s.storage.Remove(ctx, id)
+	err := s.storage.RemoveUser(ctx, id)
 	if err != nil {
 		log.Error("failed to remove user", sl.Error(err))
 		return err
