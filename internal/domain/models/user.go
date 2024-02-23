@@ -11,7 +11,7 @@ type User struct {
 }
 
 type Credentials struct {
-	Username string `json:"username,omitempty"`
+	UserName string `json:"user_name,omitempty"`
 	Password string `json:"password,omitempty"`
 	PassHash []byte `json:"pass_hash,omitempty"`
 }

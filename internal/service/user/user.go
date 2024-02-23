@@ -25,6 +25,7 @@ var (
 )
 
 type Storage interface {
+	GetAllUsers(ctx context.Context) ([]models.User, error)
 	RemoveUser(ctx context.Context, id int) error
 	UpdateUserName(ctx context.Context, id int, userName string) error
 	UpdateStatus(ctx context.Context, id int, status string) error
@@ -45,6 +46,24 @@ func New(log *slog.Logger, storage Storage, ttl time.Duration) *Service {
 		storage:  storage,
 		tokenTTL: ttl,
 	}
+}
+
+func (s *Service) GetAll() ([]models.User, error) {
+	const op = "service.user.GetAllUsers"
+
+	log := s.log.With(slog.String("op", op))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Send to storage layer
+	users, err := s.storage.GetAllUsers(ctx)
+	if err != nil {
+		log.Error("failed to get all users", sl.Error(err))
+		return nil, fmt.Errorf("%s: %w", op, err)
+	}
+
+	return users, nil
 }
 
 func (s *Service) Register(userName, password string) error {
@@ -133,7 +152,7 @@ func (s *Service) UserByID(id int) (models.User, error) {
 	return user, nil
 }
 
-func (s *Service) RemoveUser(id int) error {
+func (s *Service) Remove(id int) error {
 	const op = "service.user.RemoveUser"
 
 	log := s.log.With(slog.String("op", op))

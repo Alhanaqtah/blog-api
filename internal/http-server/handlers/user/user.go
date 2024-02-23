@@ -20,7 +20,8 @@ import (
 
 //go:generate go run github.com/vektra/mockery/v2@v2.28.2 --name=Service
 type Service interface {
-	RemoveUser(id int) error
+	GetAll() ([]models.User, error)
+	Remove(id int) error
 	UserByID(id int) (models.User, error)
 	Register(userName, password string) error
 	Login(userName, password, secret string) (token string, err error)
@@ -45,7 +46,7 @@ func New(log *slog.Logger, service Service, secret string) *User {
 func (u *User) Register() func(r chi.Router) {
 	return func(r chi.Router) {
 		// Public routes
-		//r.Get("/", u.getAll) // TODO: получение всех пользователей блога
+		r.Get("/", u.getAll) // TODO: получение всех пользователей блога
 		r.Get("/{id}", u.getByID)
 		r.Post("/login", u.login)
 		r.Post("/register", u.register)
@@ -100,6 +101,26 @@ func (u *User) login(w http.ResponseWriter, r *http.Request) {
 	render.JSON(w, r, resp.Response{
 		Status: resp.StatusOk,
 		Token:  token,
+	})
+}
+
+func (u *User) getAll(w http.ResponseWriter, r *http.Request) {
+	const op = "handlers.register.getAll"
+
+	log := u.log.With(slog.String("op", op))
+
+	// Send to service layer
+	users, err := u.service.GetAll()
+	if err != nil {
+		log.Error("failed to get all users", sl.Error(err))
+		render.JSON(w, r, resp.Err("internal error"))
+		return
+	}
+
+	// Write to response
+	render.JSON(w, r, resp.Response{
+		Status: resp.StatusOk,
+		Users:  &users,
 	})
 }
 
@@ -167,10 +188,13 @@ func (u *User) getByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var us []models.User
+	us = append(us, user)
+
 	// Write to response
 	render.JSON(w, r, resp.Response{
 		Status: resp.StatusOk,
-		User:   &user,
+		Users:  &us,
 	})
 }
 
@@ -266,7 +290,7 @@ func (u *User) remove(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Send to service layer
-	err = u.service.RemoveUser(id)
+	err = u.service.Remove(id)
 	if err != nil {
 		u.log.Error("failed to remove user", sl.Error(err))
 		render.JSON(w, r, resp.Err("internal error"))
@@ -278,7 +302,3 @@ func (u *User) remove(w http.ResponseWriter, r *http.Request) {
 		Status: resp.StatusOk,
 	})
 }
-
-//func (u *User) getAll(writer http.ResponseWriter, request *http.Request) {
-//
-//}

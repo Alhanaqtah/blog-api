@@ -61,6 +61,34 @@ func New(storagePath string) (*Storage, error) {
 
 // ### User ### //
 
+func (s *Storage) GetAllUsers(ctx context.Context) ([]models.User, error) {
+	const op = "storage.sqlite.GetAllUsers"
+
+	stmt, err := s.db.PrepareContext(ctx, `SELECT id, name, registration_date, status FROM users`)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", op, err)
+	}
+	defer stmt.Close()
+
+	rows, err := stmt.QueryContext(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", op, err)
+	}
+
+	var users []models.User
+	for rows.Next() {
+		var user models.User
+		err := rows.Scan(&user.ID, &user.UserName, &user.RegistrationDate, &user.Status)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", op, err)
+		}
+
+		users = append(users, user)
+	}
+
+	return users, nil
+}
+
 func (s *Storage) Register(ctx context.Context, username string, passHash []byte, regestrationDate time.Time) error {
 	const op = "storage.sqlite.Register"
 
@@ -94,7 +122,7 @@ func (s *Storage) UserByName(ctx context.Context, username string) (models.User,
 	res := stmt.QueryRowContext(ctx, username)
 
 	var user models.User
-	err = res.Scan(&user.ID, &user.Username, &user.PassHash)
+	err = res.Scan(&user.ID, &user.UserName, &user.PassHash)
 	if err != nil {
 		var sqliteErr sqlite3.Error
 		if errors.As(err, &sqliteErr) && sqliteErr.ExtendedCode == sql.ErrNoRows {
@@ -118,7 +146,7 @@ func (s *Storage) UserByID(ctx context.Context, id int) (models.User, error) {
 	res := stmt.QueryRowContext(ctx, id)
 
 	var user models.User
-	err = res.Scan(&user.ID, &user.Username, &user.RegistrationDate, &user.Status)
+	err = res.Scan(&user.ID, &user.UserName, &user.RegistrationDate, &user.Status)
 	if err != nil {
 		var sqliteErr sqlite3.Error
 		if errors.As(err, &sqliteErr) && sqliteErr.ExtendedCode == sql.ErrNoRows {
