@@ -18,7 +18,6 @@ import (
 	"github.com/go-chi/render"
 )
 
-//go:generate go run github.com/vektra/mockery/v2@v2.28.2 --name=Service
 type Service interface {
 	GetAll() ([]models.User, error)
 	Remove(id int) error

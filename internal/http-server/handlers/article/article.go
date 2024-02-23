@@ -168,6 +168,7 @@ func (a *Article) getByID(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// TODO: добавить проверку на уникальность заголовка статьи
 func (a *Article) update(w http.ResponseWriter, r *http.Request) {
 	const op = "handlers.article.update"
 
@@ -212,14 +213,13 @@ func (a *Article) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Pass the id of the article by which it will be found in the database
+	art.ID = articleID
+
 	// Send to service layer
 	err = a.service.Update(&art)
 	if err != nil {
 		log.Error("failed to update article", sl.Error(err))
-		if errors.As(err, &article.ErrArticleNotFound) {
-			render.JSON(w, r, resp.Err("article not found"))
-			return
-		}
 		render.JSON(w, r, resp.Err("internal error"))
 		return
 	}

@@ -1,2 +1,2 @@
 run:
-	go run ./cmd/blog-api/main.go --config=./config/config.yaml
+	go run ./cmd/main.go --config=./config/config.yaml

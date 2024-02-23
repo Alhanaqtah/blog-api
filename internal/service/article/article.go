@@ -117,10 +117,10 @@ func (s *Service) Update(art *models.Article) error {
 		err = s.storage.UpdateArticleContent(ctx, art.ID, art.Content)
 	}
 	if err != nil {
-		if errors.As(err, &storage.ErrArticleNotFound) {
+		/* if errors.As(err, &storage.ErrArticleNotFound) {
 			log.Error("article not found", sl.Error(err))
 			return fmt.Errorf("%s: %w", op, ErrArticleNotFound)
-		}
+		} */
 		log.Error("failed to update article", sl.Error(err))
 		return fmt.Errorf("%s: %w", op, err)
 	}

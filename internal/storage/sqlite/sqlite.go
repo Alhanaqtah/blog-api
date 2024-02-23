@@ -316,10 +316,10 @@ func (s *Storage) UpdateArticleTitle(ctx context.Context, id int, title string) 
 
 	_, err = stmt.ExecContext(ctx, title, id)
 	if err != nil {
-		var sqliteErr sqlite3.Error
+		/* var sqliteErr sqlite3.Error
 		if errors.As(err, &sqliteErr) && sqliteErr.ExtendedCode == sql.ErrNoRows {
 			return fmt.Errorf("%s: %w", op, storage.ErrArticleNotFound)
-		}
+		} */
 		return fmt.Errorf("%s: %w", op, err)
 	}
 
@@ -337,10 +337,10 @@ func (s *Storage) UpdateArticleContent(ctx context.Context, id int, content stri
 
 	_, err = stmt.ExecContext(ctx, content, id)
 	if err != nil {
-		var sqliteErr sqlite3.Error
+		/* var sqliteErr sqlite3.Error
 		if errors.As(err, &sqliteErr) && sqliteErr.ExtendedCode == sql.ErrNoRows {
 			return fmt.Errorf("%s: %w", op, storage.ErrArticleNotFound)
-		}
+		} */
 		return fmt.Errorf("%s: %w", op, err)
 	}
 
