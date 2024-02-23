@@ -1,15 +1,15 @@
 package user
 
 import (
-	"blog-api/internal/domain/models"
-	"blog-api/internal/lib/jwt"
 	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
 
+	"blog-api/internal/domain/models"
 	req "blog-api/internal/lib/api/request"
 	resp "blog-api/internal/lib/api/response"
+	"blog-api/internal/lib/jwt"
 	"blog-api/internal/lib/logger/sl"
 	"blog-api/internal/service/user"
 
@@ -212,15 +212,19 @@ func (u *User) update(w http.ResponseWriter, r *http.Request) {
 	// Validation
 	if upd.UserName != "" {
 		// Send to service layer
-
 		err := u.service.UpdateUserName(userID, upd.UserName)
 		if err != nil {
 			u.log.Error("failed to update user name", sl.Error(err))
+			if errors.As(err, &user.ErrUserNameTaken) {
+				render.JSON(w, r, resp.Err("user name already taken"))
+				return
+			}
 			render.JSON(w, r, resp.Err("internal error"))
 			return
 		}
 	}
 
+	// Send to service layer
 	err = u.service.UpdateStatus(userID, upd.Status)
 	if err != nil {
 		u.log.Error("failed to update user status", sl.Error(err))

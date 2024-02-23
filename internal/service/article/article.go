@@ -49,7 +49,7 @@ func (s *Service) GetAll() ([]models.Article, error) {
 	// Send to storage layer
 	arts, err := s.storage.GetAllArticles(ctx)
 	if err != nil {
-		log.Error("failed to get all users", sl.Error(err))
+		log.Error("failed to get all articles", sl.Error(err))
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 
@@ -87,7 +87,7 @@ func (s *Service) Create(art *models.Article) error {
 	defer cancel()
 
 	// Send to storage layer
-	err := s.storage.CreateArticle(ctx, art.UserID, art.Title, art.Content, time.Now())
+	err := s.storage.CreateArticle(ctx, art.AuthorID, art.Title, art.Content, time.Now())
 	if err != nil {
 		if errors.Is(err, storage.ErrArticleExists) {
 			log.Error("article not found", sl.Error(err))
@@ -117,7 +117,7 @@ func (s *Service) Update(art *models.Article) error {
 		err = s.storage.UpdateArticleContent(ctx, art.ID, art.Content)
 	}
 	if err != nil {
-		if errors.Is(err, storage.ErrArticleNotFound) {
+		if errors.As(err, &storage.ErrArticleNotFound) {
 			log.Error("article not found", sl.Error(err))
 			return fmt.Errorf("%s: %w", op, ErrArticleNotFound)
 		}

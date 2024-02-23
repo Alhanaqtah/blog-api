@@ -163,8 +163,13 @@ func (s *Storage) UpdateUserName(ctx context.Context, id int, username string) e
 	_, err = stmt.ExecContext(ctx, username, id)
 	if err != nil {
 		var sqliteErr sqlite3.Error
-		if errors.As(err, &sqliteErr) && sqliteErr.ExtendedCode == sql.ErrNoRows {
-			return fmt.Errorf("%s: %w", op, storage.ErrUserNotFound)
+		if errors.As(err, &sqliteErr) {
+			if sqliteErr.ExtendedCode == sql.ErrNoRows {
+				return fmt.Errorf("%s: %w", op, storage.ErrUserNotFound)
+			}
+			if sqliteErr.ExtendedCode == sqlite3.ErrConstraintUnique {
+				return fmt.Errorf("%s: %w", op, storage.ErrUserNameTaken)
+			}
 		}
 		return fmt.Errorf("%s: %w", op, err)
 	}
@@ -213,7 +218,7 @@ func (s *Storage) GetAllArticles(ctx context.Context) ([]models.Article, error) 
 	for rows.Next() {
 		var art models.Article
 
-		err = rows.Scan(&art.ID, &art.Title, &art.Content, &art.PublishDate, &art.UserID)
+		err = rows.Scan(&art.ID, &art.Title, &art.Content, &art.PublishDate, &art.AuthorID)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", op, err)
 		}
@@ -227,7 +232,7 @@ func (s *Storage) GetAllArticles(ctx context.Context) ([]models.Article, error) 
 func (s *Storage) GetArticleByID(ctx context.Context, id int) (*models.Article, error) {
 	const op = "storage.sqlite.GetArticleByID"
 
-	stmt, err := s.db.PrepareContext(ctx, `SELECT title, content, publish_date, user_id FROM articles WHERE id = ?`)
+	stmt, err := s.db.PrepareContext(ctx, `SELECT title, content, publish_date, author_id FROM articles WHERE id = ?`)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
@@ -243,7 +248,7 @@ func (s *Storage) GetArticleByID(ctx context.Context, id int) (*models.Article, 
 	}
 
 	var art models.Article
-	err = row.Scan(&art.Title, &art.Content, &art.PublishDate, &art.UserID)
+	err = row.Scan(&art.Title, &art.Content, &art.PublishDate, &art.AuthorID)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
@@ -254,7 +259,7 @@ func (s *Storage) GetArticleByID(ctx context.Context, id int) (*models.Article, 
 func (s *Storage) CreateArticle(ctx context.Context, userID int, title, content string, publishDate time.Time) error {
 	const op = "storage.sqlite.CreateArticle"
 
-	stmt, err := s.db.PrepareContext(ctx, `INSERT INTO articles (title, content, publish_date, user_id) VALUES (?, ?, ?, ?)`)
+	stmt, err := s.db.PrepareContext(ctx, `INSERT INTO articles (title, content, publish_date, author_id) VALUES (?, ?, ?, ?)`)
 	if err != nil {
 		return fmt.Errorf("%s: %w", op, err)
 	}

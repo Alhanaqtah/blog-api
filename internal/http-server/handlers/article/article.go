@@ -92,14 +92,14 @@ func (a *Article) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	satisfied, err := jwt.CheckClaim(r.Context(), "uid", strconv.Itoa(art.UserID))
+	satisfied, err := jwt.CheckClaim(r.Context(), "uid", strconv.Itoa(art.AuthorID))
 	if err != nil {
-		log.Error("failed to check permission", slog.String("user_id", strconv.Itoa(art.UserID)), sl.Error(err))
+		log.Error("failed to check permission", slog.String("user_id", strconv.Itoa(art.AuthorID)), sl.Error(err))
 		render.JSON(w, r, resp.Err("internal error"))
 		return
 	}
 	if !satisfied {
-		log.Debug("user doesn't have permission", slog.Int("user_id", art.UserID))
+		log.Debug("user doesn't have permission", slog.Int("user_id", art.AuthorID))
 		render.JSON(w, r, resp.Err("not enough rights"))
 		return
 	}
@@ -200,7 +200,7 @@ func (a *Article) update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	satisfied, err := jwt.CheckClaim(r.Context(), "uid", strconv.Itoa(ar.UserID))
+	satisfied, err := jwt.CheckClaim(r.Context(), "uid", strconv.Itoa(ar.AuthorID))
 	if err != nil {
 		log.Error("failed to check permission")
 		render.JSON(w, r, resp.Err("internal error"))
@@ -216,7 +216,7 @@ func (a *Article) update(w http.ResponseWriter, r *http.Request) {
 	err = a.service.Update(&art)
 	if err != nil {
 		log.Error("failed to update article", sl.Error(err))
-		if errors.Is(err, article.ErrArticleNotFound) {
+		if errors.As(err, &article.ErrArticleNotFound) {
 			render.JSON(w, r, resp.Err("article not found"))
 			return
 		}
@@ -245,7 +245,7 @@ func (a *Article) remove(w http.ResponseWriter, r *http.Request) {
 	// Send to service layer
 	art, err := a.service.GetByID(id)
 	if err != nil {
-		log.Error("failed to get user by id", sl.Error(err))
+		log.Error("failed to get article by id", sl.Error(err))
 		if errors.Is(err, article.ErrArticleNotFound) {
 			render.JSON(w, r, resp.Err("article not found"))
 		}
@@ -253,7 +253,7 @@ func (a *Article) remove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	satisfied, err := jwt.CheckClaim(r.Context(), "uid", strconv.Itoa(art.UserID))
+	satisfied, err := jwt.CheckClaim(r.Context(), "uid", strconv.Itoa(art.AuthorID))
 	if err != nil {
 		log.Error("failed to check permission")
 		render.JSON(w, r, resp.Err("internal error"))

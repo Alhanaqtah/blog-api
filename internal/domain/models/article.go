@@ -7,5 +7,5 @@ type Article struct {
 	Title       string     `json:"title,omitempty"`
 	Content     string     `json:"content,omitempty"`
 	PublishDate *time.Time `json:"publish_date,omitempty"`
-	UserID      int        `json:"user_id,omitempty"`
+	AuthorID    int        `json:"author_id,omitempty"`
 }

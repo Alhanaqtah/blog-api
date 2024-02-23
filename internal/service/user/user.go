@@ -19,6 +19,9 @@ import (
 var (
 	ErrUserExists   = errors.New("user name already taken")
 	ErrUserNotFound = errors.New("user not found")
+
+	ErrUserNameTaken = errors.New("user name already taken")
+	ErrTitleTaken    = errors.New("article title already taken")
 )
 
 type Storage interface {

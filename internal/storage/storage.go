@@ -8,4 +8,7 @@ var (
 
 	ErrArticleExists   = errors.New("article already exists")
 	ErrArticleNotFound = errors.New("article not found")
+
+	ErrUserNameTaken = errors.New("user name already taken")
+	ErrTitleTaken    = errors.New("article title already taken")
 )
